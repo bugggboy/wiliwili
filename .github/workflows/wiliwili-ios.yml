@@ -22,6 +22,10 @@ env:
   GNUTLS_TAG: "3.8.11"
   SHADERC_TAG: "2026.1.0"
   DAV1D_TAG: "1.5.3"
+  ASS_TAG: "0.17.5"
+  BLURAY_TAG: "1.4.0"
+  UCHARDET_TAG: "0.0.8"
+  UAVS3D_TAG: "1.2.1-fix"
   APP_NAME: wiliwili
 
 jobs:
@@ -37,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v5
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v6
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -53,7 +57,7 @@ jobs:
             if [ ! -f "$out" ]; then
               curl -sL --retry 3 "https://github.com/mpvkit/${repo}/releases/download/${tag}/${asset}" -o "$out"
             fi
-            unzip -q -o "$out" -d "dl/x-$asset"
+            unzip -q -o "$out" -d "dl/x-$asset" 2>/dev/null || { echo "解包失败: $asset"; return 0; }
             local fw
             fw=$(find "dl/x-$asset" -type d -path "*/ios-arm64/*.framework" | head -1)
             if [ -z "$fw" ]; then echo "跳过（无 ios-arm64 切片）: $asset"; return 0; fi
@@ -91,6 +95,14 @@ jobs:
           fetch gmp.xcframework.zip gnutls-build "$GNUTLS_TAG"
           fetch Libdav1d.xcframework.zip libdav1d-build "$DAV1D_TAG"
           fetch lcms2.xcframework.zip libplacebo-build "$PLACEBO_TAG"
+          fetch Libass.xcframework.zip libass-build "$ASS_TAG"
+          fetch Libfreetype.xcframework.zip libass-build "$ASS_TAG"
+          fetch Libfribidi.xcframework.zip libass-build "$ASS_TAG"
+          fetch Libharfbuzz.xcframework.zip libass-build "$ASS_TAG"
+          fetch Libunibreak.xcframework.zip libass-build "$ASS_TAG"
+          fetch Libbluray.xcframework.zip libbluray-build "$BLURAY_TAG"
+          fetch Libuchardet.xcframework.zip libuchardet-build "$UCHARDET_TAG"
+          fetch Libuavs3d.xcframework.zip libuavs3d-build "$UAVS3D_TAG"
 
           ls -la "$PREFIX/lib"
           for f in "$PREFIX/lib"/*.a; do
@@ -106,7 +118,7 @@ jobs:
 
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
 
-          LIBS="-L\${libdir} -lmpv -lplacebo -lshaderc_combined -ldav1d -llcms2 -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
+          LIBS="-L\${libdir} -lmpv -lass -lharfbuzz -lfreetype -lfribidi -lunibreak -lbluray -luchardet -luavs3d -lplacebo -lshaderc_combined -ldav1d -llcms2 -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
           exec_prefix=\${prefix}

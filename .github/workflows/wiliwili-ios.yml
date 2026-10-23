@@ -184,7 +184,7 @@ jobs:
             -DHAVE_H_ERRNO_ASSIGNABLE_EXITCODE=1 \
             -DUSE_LIBPSL=OFF \
             -DCURL_USE_LIBPSL=OFF \
-            -DCMAKE_EXE_LINKER_FLAGS="-Wl,-framework,Metal -Wl,-framework,MetalKit -Wl,-framework,QuartzCore -Wl,-framework,IOSurface -Wl,-framework,UIKit -Wl,-framework,CoreGraphics -Wl,-framework,Foundation -Wl,-framework,CoreFoundation -Wl,-framework,CoreVideo -Wl,-framework,IOKit" \\
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,-framework,Metal -Wl,-framework,MetalKit -Wl,-framework,QuartzCore -Wl,-framework,IOSurface -Wl,-framework,UIKit -Wl,-framework,CoreGraphics -Wl,-framework,Foundation -Wl,-framework,CoreFoundation -Wl,-framework,CoreVideo -Wl,-framework,IOKit" \
             -DCMAKE_IGNORE_PATH="/opt/homebrew/lib;/opt/homebrew/include;/opt/homebrew/Cellar;/usr/local/lib;/usr/local/include"
 
       - name: 编译

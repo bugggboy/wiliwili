@@ -231,3 +231,16 @@ jobs:
             build-ios/**/*.app/Info.plist
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: 挂到 Release（手机 Safari 直链下载，免登录）
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [ -f wiliwili-unsigned.ipa ] || exit 0
+          TAG=wiliwili-ios-preview
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "wiliwili for iOS 14+ (unsigned)" \
+                 --notes "wiliwili 的 iOS 移植预览版。未签名，用 TrollStore 安装。最低 iOS 14.0。" \
+                 --latest
+          gh release upload "$TAG" wiliwili-unsigned.ipa --clobber

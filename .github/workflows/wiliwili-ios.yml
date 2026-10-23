@@ -60,13 +60,24 @@ jobs:
               curl -sL --retry 3 "https://github.com/mpvkit/${repo}/releases/download/${tag}/${asset}" -o "$out"
             fi
             unzip -q -o "$out" -d "dl/x-$asset" 2>/dev/null || { echo "解包失败: $asset"; return 0; }
-            local fw
+            local fw art name real
             fw=$(find "dl/x-$asset" -type d -path "*/ios-arm64/*.framework" | head -1)
-            if [ -z "$fw" ]; then echo "跳过（无 ios-arm64 切片）: $asset"; return 0; fi
-            local name real
-            name=$(basename "$fw" .framework)
-            real=${name#Lib}                      # Libmpv -> mpv, Libavcodec -> avcodec
-            cp "$fw/$name" "$PREFIX/lib/lib${real}.a"
+            if [ -n "$fw" ]; then
+              name=$(basename "$fw" .framework)
+              real=${name#Lib}                    # Libmpv -> mpv
+              cp "$fw/$name" "$PREFIX/lib/lib${real}.a"
+            else
+              # 有些包（如 MoltenVK）不带 .framework，直接给裸的 .a/.dylib
+              art=$(find "dl/x-$asset" -path "*/ios-arm64/*" \( -name "*.a" -o -name "*.dylib" \) | head -1)
+              if [ -z "$art" ]; then
+                echo "跳过（无 ios-arm64 产物）: $asset"
+                ls -R "dl/x-$asset" | head -20
+                return 0
+              fi
+              name=$(basename "$art"); name=${name%.a}; name=${name%.dylib}
+              real=${name#lib}; real=${real#Lib}
+              cp "$art" "$PREFIX/lib/lib${real}.a"
+            fi
             if [ -d "$fw/Headers" ]; then
               if [ "$name" = "Libmpv" ]; then
                 cp -R "$fw/Headers/"* "$PREFIX/include/" 2>/dev/null || true

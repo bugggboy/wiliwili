@@ -1,8 +1,7 @@
 name: probe · MPVKit 各版本最低系统
 
-# M1 关键结论已出：MPVKit 1.0.0 的 Libmpv 是 minos 15.0 —— 不能用（我们要 14.0）。
-# 这一步去翻历史 release：老版本的 MPVKit 很可能是 minos 13/14，
-# 而且老版本的 mpv API 更接近 wiliwili 期望的 0.36，属于双赢。
+# v4：v3 的结果全是问号，说明诊断信息不够。这次把每一步的文件尺寸、切片目录、
+# vtool 的原始输出都打出来，一次定位到底哪一步错了。
 
 on:
   push:
@@ -17,48 +16,54 @@ jobs:
   probe:
     runs-on: macos-26
     steps:
-      - name: 列出各版本的 Libmpv 资产
+      - name: 列出各版本的 xcframework 资产
         run: |
           set -e
-          curl -s --retry 3 "https://api.github.com/repos/mpvkit/MPVKit/releases?per_page=30" -o rel.json
+          curl -sf --retry 3 "https://api.github.com/repos/mpvkit/MPVKit/releases?per_page=100" -o rel.json
           python3 - <<'PY' > targets.txt
-          import json
+          import json, re
           rs = json.load(open('rel.json'))
           for r in rs:
               tag = r.get('tag_name') or ''
+              pick = None
               for a in r.get('assets') or []:
                   n = a['name']
-                  if n.startswith('Libmpv') and n.endswith('.xcframework.zip') and 'GPL' not in n:
-                      print(f"{tag}\t{a['browser_download_url']}")
+                  if n.endswith('.zip') and 'GPL' not in n and re.match(r'^(Libmpv|mpv)', n) and 'xcframework' in n:
+                      pick = (n, a['browser_download_url'])
                       break
+              if pick:
+                  print('\t'.join([tag, pick[0], pick[1]]))
           PY
+          echo "候选版本数: $(wc -l < targets.txt)"
           cat targets.txt
 
-      - name: 逐个版本读 minos 与 mpv API 版本
+      - name: 逐个版本诊断
         run: |
-          set -u
-          echo "tag | minos | sdk | mpv api"
+          echo "tag | asset | size | minos | sdk | mpv api"
           echo "-----"
-          while IFS=$'\t' read -r tag url; do
+          while IFS=$'\t' read -r tag asset url; do
             [ -z "${tag:-}" ] && continue
             rm -rf dl && mkdir -p dl
-            if ! curl -sL --retry 2 --max-time 300 -o dl/mpv.zip "$url"; then
-              echo "$tag | 下载失败 | - | -"
+            code=$(curl -sL -o dl/mpv.zip -w '%{http_code}' --retry 2 --max-time 300 "$url" || echo ERR)
+            size=$(wc -c < dl/mpv.zip 2>/dev/null | tr -d ' ')
+            if [ "$code" != "200" ]; then echo "$tag | $asset | HTTP $code | - | - | -"; continue; fi
+            if ! unzip -q -o dl/mpv.zip -d dl/x 2>dl/unzip.err; then
+              echo "$tag | $asset | $size | 解包失败: $(head -1 dl/unzip.err) | - | -"
               continue
             fi
-            if ! unzip -q -o dl/mpv.zip -d dl/x 2>/dev/null; then
-              echo "$tag | 解包失败 | - | -"
-              continue
-            fi
-            FW=$(find dl/x -type d -path "*/ios-arm64/*.framework" | head -1)
+            FW=$(find dl/x -type d -name "*.framework" -path "*/ios-arm64/*" | head -1)
             if [ -z "$FW" ]; then
-              echo "$tag | 无 ios-arm64 切片 | - | -"
+              echo "$tag | $asset | $size | 无 ios-arm64 切片，目录: $(ls dl/x | tr '\n' ' ') | - | -"
               continue
             fi
             BIN="$FW/$(basename "$FW" .framework)"
-            MINOS=$(vtool -show-build "$BIN" 2>/dev/null | awk '/minos/{print $2; exit}')
-            SDK=$(vtool -show-build "$BIN" 2>/dev/null | awk '/sdk/{print $2; exit}')
+            if [ ! -f "$BIN" ]; then
+              echo "$tag | $asset | $size | 二进制不存在: $(ls "$FW" | tr '\n' ' ') | - | -"
+              continue
+            fi
+            MINOS=$(vtool -show-build "$BIN" 2>&1 | awk '/minos/{print $2; exit}')
+            SDK=$(vtool -show-build "$BIN" 2>&1 | awk '/sdk/{print $2; exit}')
             API=$(grep -h "MPV_CLIENT_API_MAJOR_VERSION\|MPV_CLIENT_API_MINOR_VERSION" \
                     "$FW/Headers/mpv/client.h" 2>/dev/null | awk -F'define' '{print $2}' | tr -d ' ' | tr '\n' '.' )
-            echo "$tag | ${MINOS:-?} | ${SDK:-?} | ${API:-?}"
+            echo "$tag | $asset | $size | ${MINOS:-?} | ${SDK:-?} | ${API:-?}"
           done < targets.txt

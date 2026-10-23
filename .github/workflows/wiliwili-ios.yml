@@ -54,11 +54,12 @@ jobs:
             local fw
             fw=$(find "dl/x-$asset" -type d -path "*/ios-arm64/*.framework" | head -1)
             if [ -z "$fw" ]; then echo "跳过（无 ios-arm64 切片）: $asset"; return 0; fi
-            local name
+            local name real
             name=$(basename "$fw" .framework)
-            cp "$fw/$name" "$PREFIX/lib/lib${name}.a"
+            real=${name#Lib}                      # Libmpv -> mpv, Libavcodec -> avcodec
+            cp "$fw/$name" "$PREFIX/lib/lib${real}.a"
             if [ -d "$fw/Headers" ]; then cp -R "$fw/Headers/"* "$PREFIX/include/" 2>/dev/null || true; fi
-            echo "已就绪 lib${name}.a"
+            echo "已就绪 lib${real}.a"
           }
 
           # mpv 本体 + 它依赖的 ffmpeg 各库
@@ -132,6 +133,7 @@ jobs:
             -DIOS_CODE_SIGN_IDENTITY="" \
             -DDISABLE_WEBP=ON \
             -DCMAKE_PREFIX_PATH="$PREFIX" \
+            -DCMAKE_CXX_FLAGS="-include ctime" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DHAVE_H_ERRNO_ASSIGNABLE=0 \

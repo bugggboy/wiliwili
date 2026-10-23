@@ -1,9 +1,8 @@
 name: probe · MPVKit xcframework 最低系统
 
-# M1 第一步：先不编译，只回答一个问题——
-# MPVKit 预编译的 Libmpv.xcframework 到底支持到哪个 iOS 版本？
-# 如果它的 MinimumOSVersion 高于 14.0，那"自己编 mpv"就成了唯一出路。
-# 跑在 ubuntu 上（1 倍分钟数），只做下载 + 解包 + 读 Info.plist。
+# M1 第一步（v2）：只回答一个问题——MPVKit 预编译的 Libmpv 支持到哪个 iOS 版本。
+# v1 在 Linux 上读 Info.plist 拿到的是占位值 100.0，不可信；
+# 真正的部署目标写在 Mach-O 的 LC_BUILD_VERSION 里，必须用 vtool / otool 看，所以要 macOS。
 
 on:
   push:
@@ -16,7 +15,7 @@ permissions:
 
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    runs-on: macos-26
     steps:
       - name: 下载 Libmpv.xcframework
         run: |
@@ -25,40 +24,32 @@ jobs:
             "https://github.com/mpvkit/MPVKit/releases/download/1.0.0/Libmpv.xcframework.zip"
           ls -lh libmpv.zip
           unzip -q libmpv.zip -d mpv
-          echo "===== 顶层结构 ====="
-          ls -la mpv
-          echo "===== xcframework 内部 ====="
-          find mpv -maxdepth 2 -type d | head -30
+          echo "===== 切片 ====="
+          ls mpv/Libmpv.xcframework
+          echo "===== xcframework 清单 ====="
+          plutil -p mpv/Libmpv.xcframework/Info.plist
 
-      - name: 打印每个切片的 MinimumOSVersion
+      - name: 读 ios-arm64 切片的真实部署目标
         run: |
-          python3 - <<'PY'
-          import glob, os, plistlib
+          set -x
+          FW=mpv/Libmpv.xcframework/ios-arm64/Libmpv.framework
+          ls -la "$FW"
+          file "$FW/Libmpv"
+          echo "===== vtool ====="
+          vtool -show-build "$FW/Libmpv" || true
+          echo "===== otool LC_BUILD_VERSION ====="
+          otool -l "$FW/Libmpv" 2>/dev/null | grep -A6 "LC_BUILD_VERSION" | head -40
+          echo "===== 静态还是动态 ====="
+          otool -hv "$FW/Libmpv" 2>/dev/null | head -5
 
-          roots = glob.glob('mpv/**/*.xcframework', recursive=True)
-          if not roots:
-              raise SystemExit('没找到 xcframework')
-          for root in roots:
-              print(f'=== {root} ===')
-              plists = sorted(glob.glob(os.path.join(root, '**', 'Info.plist'), recursive=True))
-              if not plists:
-                  print('  没有 Info.plist')
-              for p in plists:
-                  with open(p, 'rb') as f:
-                      d = plistlib.load(f)
-                  print(f'  {os.path.relpath(p, root)}')
-                  print(f'    LibraryIdentifier      = {d.get("LibraryIdentifier")}')
-                  print(f'    SupportedPlatform      = {d.get("SupportedPlatform")}')
-                  print(f'    SupportedPlatformVariant = {d.get("SupportedPlatformVariant")}')
-                  print(f'    MinimumOSVersion       = {d.get("MinimumOSVersion")}')
-                  print(f'    CFBundleShortVersionString = {d.get("CFBundleShortVersionString")}')
-          PY
-
-      - name: 看链接产物与头文件
+      - name: mpv 客户端 API 版本
         run: |
-          echo "===== 静态库 ====="
-          find mpv -name "*.a" -exec ls -lh {} \; | head -20
-          echo "===== 头文件 ====="
-          find mpv -name "*.h" | head -20
-          echo "===== mpv 客户端 API 版本 ====="
-          grep -rn "MPV_CLIENT_API_MAJOR_VERSION\|MPV_CLIENT_API_MINOR_VERSION" mpv --include=*.h | head -5
+          grep -n "MPV_CLIENT_API_MAJOR_VERSION\|MPV_CLIENT_API_MINOR_VERSION" \
+            mpv/Libmpv.xcframework/ios-arm64/Libmpv.framework/Headers/mpv/client.h | head -5
+
+      - name: 顺带看 ffmpeg 的部署目标
+        run: |
+          curl -sL --retry 3 -o av.tar.gz \
+            "https://github.com/mpvkit/MPVKit/releases/download/1.0.0/Libavcodec.xcframework.zip"
+          unzip -q av.tar.gz -d av
+          vtool -show-build av/Libavcodec.xcframework/ios-arm64/Libavcodec.framework/Libavcodec || true

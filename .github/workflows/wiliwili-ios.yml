@@ -18,6 +18,7 @@ concurrency:
 
 env:
   MPVKIT_TAG: "0.41.0"
+  PLACEBO_TAG: "7.349.0"   # 2024-07 发布，minOS 比新版低，先试这个
   APP_NAME: wiliwili
 
 jobs:
@@ -33,7 +34,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v2
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v3
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -43,9 +44,11 @@ jobs:
 
           fetch() {
             local asset="$1"
+            local repo="${2:-MPVKit}"
+            local tag="${3:-$MPVKIT_TAG}"
             local out="dl/$asset"
             if [ ! -f "$out" ]; then
-              curl -sL --retry 3 "https://github.com/mpvkit/MPVKit/releases/download/${MPVKIT_TAG}/${asset}" -o "$out"
+              curl -sL --retry 3 "https://github.com/mpvkit/${repo}/releases/download/${tag}/${asset}" -o "$out"
             fi
             unzip -q -o "$out" -d "dl/x-$asset"
             local fw
@@ -67,7 +70,13 @@ jobs:
             fetch "$a"
           done
 
+          # mpv 的 gpu-next 走 libplacebo，MPVKit 没有把它打进 Libmpv
+          fetch Libplacebo.xcframework.zip libplacebo-build "$PLACEBO_TAG"
+
           ls -la "$PREFIX/lib"
+          for f in "$PREFIX/lib"/*.a; do
+            otool -l "$f" | awk -v n="$(basename "$f")" '/minos/{print n, "minos =", $2; exit}'
+          done
           echo "===== 各静态库提供的 libplacebo 符号 ====="
           for f in "$PREFIX/lib"/*.a; do
             if nm -g "$f" 2>/dev/null | grep -q "_pl_vulkan_create"; then echo "libplacebo 在: $f"; fi
@@ -78,7 +87,7 @@ jobs:
 
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
 
-          LIBS="-L\${libdir} -lmpv -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil"
+          LIBS="-L\${libdir} -lmpv -lplacebo -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil"
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
           exec_prefix=\${prefix}

@@ -29,18 +29,28 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: 缓存 mpv 依赖
+        uses: actions/cache@v4
+        with:
+          path: .deps/mpv
+          key: mpvkit-${{ env.MPVKIT_TAG }}
+
       - name: 准备 MPVKit（Libmpv + 头文件 + mpv.pc）
         run: |
           set -e
-          curl -sL --retry 3 -o mpvkit.zip \
-            "https://github.com/mpvkit/MPVKit/releases/download/${MPVKIT_TAG}/Libmpv.xcframework.zip"
-          unzip -q mpvkit.zip -d mpvkit
-          FW=$(find mpvkit -type d -path "*/ios-arm64/*.framework" | head -1)
-          echo "framework: $FW"
           PREFIX="$PWD/.deps/mpv"
-          mkdir -p "$PREFIX/lib" "$PREFIX/include" "$PREFIX/lib/pkgconfig"
-          cp "$FW/$(basename "$FW" .framework)" "$PREFIX/lib/libmpv.a"
-          cp -R "$FW/Headers/"* "$PREFIX/include/"
+          if [ -f "$PREFIX/lib/libmpv.a" ]; then
+            echo "命中缓存，跳过下载"
+          else
+            curl -sL --retry 3 -o mpvkit.zip \
+              "https://github.com/mpvkit/MPVKit/releases/download/${MPVKIT_TAG}/Libmpv.xcframework.zip"
+            unzip -q mpvkit.zip -d mpvkit
+            FW=$(find mpvkit -type d -path "*/ios-arm64/*.framework" | head -1)
+            echo "framework: $FW"
+            mkdir -p "$PREFIX/lib" "$PREFIX/include" "$PREFIX/lib/pkgconfig"
+            cp "$FW/$(basename "$FW" .framework)" "$PREFIX/lib/libmpv.a"
+            cp -R "$FW/Headers/"* "$PREFIX/include/"
+          fi
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
@@ -56,6 +66,9 @@ jobs:
           PC
           echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "PREFIX=$PREFIX" >> "$GITHUB_ENV"
+
+      - name: 装 ccache（加速后续增量编译）
+        run: brew install ccache
 
       - name: 构建 host 版 libromfs-generator
         run: |
@@ -80,7 +93,11 @@ jobs:
             -DIOS_GUI_IDENTIFIER=com.bugggboy.wiliwili \
             -DIOS_CODE_SIGN_IDENTITY="" \
             -DDISABLE_WEBP=ON \
-            -DCMAKE_PREFIX_PATH="$PREFIX"
+            -DCMAKE_PREFIX_PATH="$PREFIX" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DHAVE_H_ERRNO_ASSIGNABLE=0 \
+            -DHAVE_H_ERRNO_ASSIGNABLE_EXITCODE=1
 
       - name: 编译
         run: |

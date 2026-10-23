@@ -18,7 +18,9 @@ concurrency:
 
 env:
   MPVKIT_TAG: "0.41.0"
-  PLACEBO_TAG: "7.349.0"   # 2024-07 发布，minOS 比新版低，先试这个
+  PLACEBO_TAG: "7.351.0"   # 必须 >= 7.351：mpv 0.41 引用了 pl_log_create_351 / pl_cache_*
+  GNUTLS_TAG: "3.8.11"
+  SHADERC_TAG: "2026.1.0"
   APP_NAME: wiliwili
 
 jobs:
@@ -34,7 +36,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v3
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v4
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -79,8 +81,13 @@ jobs:
             fetch "$a"
           done
 
-          # mpv 的 gpu-next 走 libplacebo，MPVKit 没有把它打进 Libmpv
+          # mpv 0.41 的运行时依赖，MPVKit 本体都不内置，要逐个从对应仓库取
           fetch Libplacebo.xcframework.zip libplacebo-build "$PLACEBO_TAG"
+          fetch Libshaderc_combined.xcframework.zip libshaderc-build "$SHADERC_TAG"
+          fetch gnutls.xcframework.zip gnutls-build "$GNUTLS_TAG"
+          fetch nettle.xcframework.zip gnutls-build "$GNUTLS_TAG"
+          fetch hogweed.xcframework.zip gnutls-build "$GNUTLS_TAG"
+          fetch gmp.xcframework.zip gnutls-build "$GNUTLS_TAG"
 
           ls -la "$PREFIX/lib"
           for f in "$PREFIX/lib"/*.a; do
@@ -96,7 +103,7 @@ jobs:
 
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
 
-          LIBS="-L\${libdir} -lmpv -lplacebo -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
+          LIBS="-L\${libdir} -lmpv -lplacebo -lshaderc_combined -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
           exec_prefix=\${prefix}

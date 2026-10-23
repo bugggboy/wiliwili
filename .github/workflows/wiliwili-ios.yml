@@ -1,0 +1,127 @@
+name: iOS · wiliwili 构建（M2）
+
+# M2：用 MPVKit 0.41.0（minos 14.0，正好匹配 iOS 14 目标）编 wiliwili 主程序。
+# 这一步大概率第一次不会过，目的是把失败原因一条条逼出来。
+
+on:
+  push:
+    paths:
+      - ".github/workflows/wiliwili-ios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiliwili-ios
+  cancel-in-progress: true
+
+env:
+  MPVKIT_TAG: "0.41.0"
+  APP_NAME: wiliwili
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: 准备 MPVKit（Libmpv + 头文件 + mpv.pc）
+        run: |
+          set -e
+          curl -sL --retry 3 -o mpvkit.zip \
+            "https://github.com/mpvkit/MPVKit/releases/download/${MPVKIT_TAG}/Libmpv.xcframework.zip"
+          unzip -q mpvkit.zip -d mpvkit
+          FW=$(find mpvkit -type d -path "*/ios-arm64/*.framework" | head -1)
+          echo "framework: $FW"
+          PREFIX="$PWD/.deps/mpv"
+          mkdir -p "$PREFIX/lib" "$PREFIX/include" "$PREFIX/lib/pkgconfig"
+          cp "$FW/$(basename "$FW" .framework)" "$PREFIX/lib/libmpv.a"
+          cp -R "$FW/Headers/"* "$PREFIX/include/"
+          otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
+          cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
+          prefix=$PREFIX
+          exec_prefix=\${prefix}
+          libdir=\${prefix}/lib
+          includedir=\${prefix}/include
+
+          Name: mpv
+          Description: mpv media player client library
+          Version: ${MPVKIT_TAG}
+          Libs: -L\${libdir} -lmpv
+          Cflags: -I\${includedir}
+          PC
+          echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "PREFIX=$PREFIX" >> "$GITHUB_ENV"
+
+      - name: 构建 host 版 libromfs-generator
+        run: |
+          set -e
+          cd library/borealis
+          bash build_libromfs_generator.sh
+          cd "$GITHUB_WORKSPACE"
+          ls -la library/borealis/libromfs-generator
+          cp library/borealis/libromfs-generator . || true
+
+      - name: 配置
+        run: |
+          set -x
+          export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
+          cmake -S . -B build-ios -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/library/borealis/library/cmake/ios.toolchain.cmake" \
+            -DPLATFORM=OS64 \
+            -DARCHS=arm64 \
+            -DDEPLOYMENT_TARGET=14.0 \
+            -DPLATFORM_IOS=ON \
+            -DIOS_GUI_IDENTIFIER=com.bugggboy.wiliwili \
+            -DIOS_CODE_SIGN_IDENTITY="" \
+            -DDISABLE_WEBP=ON \
+            -DCMAKE_PREFIX_PATH="$PREFIX"
+
+      - name: 编译
+        run: |
+          set -o pipefail
+          cmake --build build-ios -j"$(sysctl -n hw.ncpu)" 2>&1 | tail -150
+
+      - name: 产物校验与打包
+        if: always()
+        run: |
+          APP=$(find build-ios -name "*.app" -maxdepth 4 | head -1)
+          if [ -z "$APP" ]; then echo "::error::没有产出 .app"; find build-ios -maxdepth 2 -type d | head -20; exit 1; fi
+          echo "APP=$APP"
+          ls -la "$APP"
+          BIN=$(find "$APP" -maxdepth 1 -type f -perm +111 | head -1)
+          otool -l "$BIN" | awk '/minos|sdk /{print}' | head -4
+          MINOS=$(otool -l "$BIN" | awk '/minos/{print $2; exit}')
+          echo "main binary minos=$MINOS"
+          case "$MINOS" in
+            14.*) echo "::notice::部署目标 14.0 生效" ;;
+            *) echo "::error::minos=$MINOS，不是 14.x"; exit 1 ;;
+          esac
+          P="$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$P" >/dev/null 2>&1 \
+            || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 14.0" "$P"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleSupportedPlatforms" "$P" >/dev/null 2>&1 \
+            || { /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms array" "$P"; \
+                 /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" "$P"; }
+          /usr/libexec/PlistBuddy -c "Print :UILaunchScreen" "$P" >/dev/null 2>&1 \
+            || /usr/libexec/PlistBuddy -c "Add :UILaunchScreen dict" "$P"
+          rm -rf out && mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent out/Payload wiliwili-unsigned.ipa
+          ls -lh wiliwili-unsigned.ipa
+          echo "IPA_SIZE=$(du -h wiliwili-unsigned.ipa | cut -f1)" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wiliwili-ios
+          path: |
+            wiliwili-unsigned.ipa
+            build-ios/**/*.app/Info.plist
+          if-no-files-found: ignore
+          retention-days: 14

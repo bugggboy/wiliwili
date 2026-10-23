@@ -249,8 +249,11 @@ if (PLATFORM_DESKTOP)
                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/linux/${PACKAGE_NAME}.desktop")
     endif ()
 elseif (PLATFORM_IOS)
+    # [iOS port] 锁定版本的 borealis 里 ios_bundle 只有 5 个参数
+    # function(ios_bundle iosStoryBoard assets plist name version)
+    # 上游 yoga 分支按 6 参数（tvos/ios 各一个 storyboard）写，直接调用会错位，
+    # 导致 plist 模板被当成 Images.xcassets。这里改成 5 参数形式。
     ios_bundle(
-            "${CMAKE_CURRENT_SOURCE_DIR}/library/borealis/demo/ios/tvos/Splash.storyboard"
             "${CMAKE_CURRENT_SOURCE_DIR}/library/borealis/demo/ios/iphoneos/Splash.storyboard"
             "${CMAKE_CURRENT_SOURCE_DIR}/library/borealis/demo/ios/Images.xcassets"
             "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ios/iOSBundleInfo.plist.in"

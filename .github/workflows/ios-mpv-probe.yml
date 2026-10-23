@@ -61,8 +61,9 @@ jobs:
               echo "$tag | $asset | $size | 二进制不存在: $(ls "$FW" | tr '\n' ' ') | - | -"
               continue
             fi
-            MINOS=$(vtool -show-build "$BIN" 2>&1 | awk '/minos/{print $2; exit}')
-            SDK=$(vtool -show-build "$BIN" 2>&1 | awk '/sdk/{print $2; exit}')
+            # 静态库（ar archive）用 otool 才能读 LC_BUILD_VERSION；vtool 对 .a 返回空
+            MINOS=$(otool -l "$BIN" 2>/dev/null | awk '/minos/{print $2; exit}')
+            SDK=$(otool -l "$BIN" 2>/dev/null | awk '/sdk/{print $2; exit}')
             API=$(grep -h "MPV_CLIENT_API_MAJOR_VERSION\|MPV_CLIENT_API_MINOR_VERSION" \
                     "$FW/Headers/mpv/client.h" 2>/dev/null | awk -F'define' '{print $2}' | tr -d ' ' | tr '\n' '.' )
             echo "$tag | $asset | $size | ${MINOS:-?} | ${SDK:-?} | ${API:-?}"

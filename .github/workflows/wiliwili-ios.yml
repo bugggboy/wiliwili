@@ -97,7 +97,10 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DHAVE_H_ERRNO_ASSIGNABLE=0 \
-            -DHAVE_H_ERRNO_ASSIGNABLE_EXITCODE=1
+            -DHAVE_H_ERRNO_ASSIGNABLE_EXITCODE=1 \
+            -DUSE_LIBPSL=OFF \
+            -DCURL_USE_LIBPSL=OFF \
+            -DCMAKE_IGNORE_PATH="/opt/homebrew/lib;/opt/homebrew/include;/opt/homebrew/Cellar;/usr/local/lib;/usr/local/include"
 
       - name: 编译
         run: |

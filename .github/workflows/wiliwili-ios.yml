@@ -33,25 +33,52 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-${{ env.MPVKIT_TAG }}
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v2
 
-      - name: 准备 MPVKit（Libmpv + 头文件 + mpv.pc）
+      - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
           set -e
           PREFIX="$PWD/.deps/mpv"
-          if [ -f "$PREFIX/lib/libmpv.a" ]; then
-            echo "命中缓存，跳过下载"
-          else
-            curl -sL --retry 3 -o mpvkit.zip \
-              "https://github.com/mpvkit/MPVKit/releases/download/${MPVKIT_TAG}/Libmpv.xcframework.zip"
-            unzip -q mpvkit.zip -d mpvkit
-            FW=$(find mpvkit -type d -path "*/ios-arm64/*.framework" | head -1)
-            echo "framework: $FW"
-            mkdir -p "$PREFIX/lib" "$PREFIX/include" "$PREFIX/lib/pkgconfig"
-            cp "$FW/$(basename "$FW" .framework)" "$PREFIX/lib/libmpv.a"
-            cp -R "$FW/Headers/"* "$PREFIX/include/"
-          fi
+          mkdir -p "$PREFIX/lib" "$PREFIX/include" "$PREFIX/lib/pkgconfig" dl
+
+          fetch() {
+            local asset="$1"
+            local out="dl/$asset"
+            if [ ! -f "$out" ]; then
+              curl -sL --retry 3 "https://github.com/mpvkit/MPVKit/releases/download/${MPVKIT_TAG}/${asset}" -o "$out"
+            fi
+            unzip -q -o "$out" -d "dl/x-$asset"
+            local fw
+            fw=$(find "dl/x-$asset" -type d -path "*/ios-arm64/*.framework" | head -1)
+            if [ -z "$fw" ]; then echo "跳过（无 ios-arm64 切片）: $asset"; return 0; fi
+            local name
+            name=$(basename "$fw" .framework)
+            cp "$fw/$name" "$PREFIX/lib/lib${name}.a"
+            if [ -d "$fw/Headers" ]; then cp -R "$fw/Headers/"* "$PREFIX/include/" 2>/dev/null || true; fi
+            echo "已就绪 lib${name}.a"
+          }
+
+          # mpv 本体 + 它依赖的 ffmpeg 各库
+          for a in Libmpv.xcframework.zip \
+                   Libavcodec.xcframework.zip Libavformat.xcframework.zip \
+                   Libavutil.xcframework.zip Libavfilter.xcframework.zip \
+                   Libavdevice.xcframework.zip Libswresample.xcframework.zip \
+                   Libswscale.xcframework.zip; do
+            fetch "$a"
+          done
+
+          ls -la "$PREFIX/lib"
+          echo "===== 各静态库提供的 libplacebo 符号 ====="
+          for f in "$PREFIX/lib"/*.a; do
+            if nm -g "$f" 2>/dev/null | grep -q "_pl_vulkan_create"; then echo "libplacebo 在: $f"; fi
+          done
+          for f in "$PREFIX/lib"/*.a; do
+            if nm -g "$f" 2>/dev/null | grep -q "_swr_convert"; then echo "libswresample 在: $f"; fi
+          done
+
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
+
+          LIBS="-L\${libdir} -lmpv -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil"
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
           exec_prefix=\${prefix}
@@ -61,9 +88,11 @@ jobs:
           Name: mpv
           Description: mpv media player client library
           Version: ${MPVKIT_TAG}
-          Libs: -L\${libdir} -lmpv
+          Libs: $LIBS
+          Libs.private: $LIBS
           Cflags: -I\${includedir}
           PC
+          cat "$PREFIX/lib/pkgconfig/mpv.pc"
           echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "PREFIX=$PREFIX" >> "$GITHUB_ENV"
 

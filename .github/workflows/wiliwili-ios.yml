@@ -216,7 +216,20 @@ jobs:
                  /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" "$P"; }
           /usr/libexec/PlistBuddy -c "Print :UILaunchScreen" "$P" >/dev/null 2>&1 \
             || /usr/libexec/PlistBuddy -c "Add :UILaunchScreen dict" "$P"
-          rm -rf out && mkdir -p out/Payload
+          /usr/libexec/PlistBuddy -c "Print :UIDeviceFamily" "$P" >/dev/null 2>&1 \
+  || { /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$P"; \
+       /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$P"; }
+/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$P" >/dev/null 2>&1 \
+  || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string wiliwili" "$P"
+/usr/libexec/PlistBuddy -c "Print :UIRequiredDeviceCapabilities" "$P" >/dev/null 2>&1 \
+  || { /usr/libexec/PlistBuddy -c "Add :UIRequiredDeviceCapabilities array" "$P"; \
+       /usr/libexec/PlistBuddy -c "Add :UIRequiredDeviceCapabilities:0 string arm64" "$P"; }
+echo "----- Info.plist -----"
+for k in CFBundleIdentifier CFBundleExecutable CFBundleDisplayName MinimumOSVersion UIDeviceFamily UIRequiredDeviceCapabilities; do
+  printf "%-32s = " "$k"; /usr/libexec/PlistBuddy -c "Print :$k" "$P" 2>/dev/null || echo "(缺)"
+done
+plutil -lint "$P"
+rm -rf out && mkdir -p out/Payload
           cp -R "$APP" out/Payload/
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent out/Payload wiliwili-unsigned.ipa
           ls -lh wiliwili-unsigned.ipa

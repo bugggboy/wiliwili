@@ -1,0 +1,31 @@
+name: probe · runner 排队对比
+
+# 目的：量化不同 runner 标签的排队时间，选最快的那个做后续构建。
+# 三个 job 只打印版本信息，几秒跑完，排队时间才是被测量的对象。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "ubuntu 就绪"; date -u +"%Y-%m-%dT%H:%M:%SZ"
+
+  macos26:
+    runs-on: macos-26
+    steps:
+      - run: echo "macos-26 就绪"; date -u +"%Y-%m-%dT%H:%M:%SZ"; xcodebuild -version | head -2
+
+  macos15:
+    runs-on: macos-15
+    steps:
+      - run: echo "macos-15 就绪"; date -u +"%Y-%m-%dT%H:%M:%SZ"; xcodebuild -version | head -2
+
+  macos14:
+    runs-on: macos-14
+    steps:
+      - run: echo "macos-14 就绪"; date -u +"%Y-%m-%dT%H:%M:%SZ"; xcodebuild -version | head -2

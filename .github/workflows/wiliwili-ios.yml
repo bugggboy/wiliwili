@@ -58,7 +58,15 @@ jobs:
             name=$(basename "$fw" .framework)
             real=${name#Lib}                      # Libmpv -> mpv, Libavcodec -> avcodec
             cp "$fw/$name" "$PREFIX/lib/lib${real}.a"
-            if [ -d "$fw/Headers" ]; then cp -R "$fw/Headers/"* "$PREFIX/include/" 2>/dev/null || true; fi
+            if [ -d "$fw/Headers" ]; then
+              if [ "$name" = "Libmpv" ]; then
+                cp -R "$fw/Headers/"* "$PREFIX/include/" 2>/dev/null || true
+              else
+                # ffmpeg 等库的头文件不放主 include 路径：libavutil/time.h 会遮蔽系统 <time.h>
+                mkdir -p "$PREFIX/include/ffmpeg"
+                cp -R "$fw/Headers/"* "$PREFIX/include/ffmpeg/" 2>/dev/null || true
+              fi
+            fi
             echo "已就绪 lib${real}.a"
           }
 
@@ -133,7 +141,6 @@ jobs:
             -DIOS_CODE_SIGN_IDENTITY="" \
             -DDISABLE_WEBP=ON \
             -DCMAKE_PREFIX_PATH="$PREFIX" \
-            -DCMAKE_CXX_FLAGS="-include ctime" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DHAVE_H_ERRNO_ASSIGNABLE=0 \

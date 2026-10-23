@@ -26,6 +26,8 @@ env:
   BLURAY_TAG: "1.4.0"
   UCHARDET_TAG: "0.0.8"
   UAVS3D_TAG: "1.2.1-fix"
+  DOVI_TAG: "3.3.2"
+  MOLTENVK_TAG: "1.4.2"
   APP_NAME: wiliwili
 
 jobs:
@@ -41,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v6
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v7
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -103,6 +105,8 @@ jobs:
           fetch Libbluray.xcframework.zip libbluray-build "$BLURAY_TAG"
           fetch Libuchardet.xcframework.zip libuchardet-build "$UCHARDET_TAG"
           fetch Libuavs3d.xcframework.zip libuavs3d-build "$UAVS3D_TAG"
+          fetch Libdovi.xcframework.zip libdovi-build "$DOVI_TAG"
+          fetch MoltenVK.xcframework.zip moltenvk-build "$MOLTENVK_TAG"
 
           ls -la "$PREFIX/lib"
           for f in "$PREFIX/lib"/*.a; do
@@ -118,7 +122,7 @@ jobs:
 
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
 
-          LIBS="-L\${libdir} -lmpv -lass -lharfbuzz -lfreetype -lfribidi -lunibreak -lbluray -luchardet -luavs3d -lplacebo -lshaderc_combined -ldav1d -llcms2 -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
+          LIBS="-L\${libdir} -lmpv -lass -ldovi -lMoltenVK -lharfbuzz -lfreetype -lfribidi -lunibreak -lbluray -luchardet -luavs3d -lplacebo -lshaderc_combined -ldav1d -llcms2 -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv -framework Metal -framework MetalKit -framework QuartzCore -framework IOSurface -framework UIKit -framework CoreGraphics -framework Foundation"
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
           exec_prefix=\${prefix}

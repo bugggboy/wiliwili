@@ -21,6 +21,7 @@ env:
   PLACEBO_TAG: "7.351.0"   # 必须 >= 7.351：mpv 0.41 引用了 pl_log_create_351 / pl_cache_*
   GNUTLS_TAG: "3.8.11"
   SHADERC_TAG: "2026.1.0"
+  DAV1D_TAG: "1.5.3"
   APP_NAME: wiliwili
 
 jobs:
@@ -36,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v4
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v5
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -88,6 +89,8 @@ jobs:
           fetch nettle.xcframework.zip gnutls-build "$GNUTLS_TAG"
           fetch hogweed.xcframework.zip gnutls-build "$GNUTLS_TAG"
           fetch gmp.xcframework.zip gnutls-build "$GNUTLS_TAG"
+          fetch Libdav1d.xcframework.zip libdav1d-build "$DAV1D_TAG"
+          fetch lcms2.xcframework.zip libplacebo-build "$PLACEBO_TAG"
 
           ls -la "$PREFIX/lib"
           for f in "$PREFIX/lib"/*.a; do
@@ -103,7 +106,7 @@ jobs:
 
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
 
-          LIBS="-L\${libdir} -lmpv -lplacebo -lshaderc_combined -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
+          LIBS="-L\${libdir} -lmpv -lplacebo -lshaderc_combined -ldav1d -llcms2 -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
           exec_prefix=\${prefix}

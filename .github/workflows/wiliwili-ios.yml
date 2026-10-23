@@ -112,6 +112,7 @@ jobs:
           echo "APP=$APP"
           ls -la "$APP"
           BIN=$(find "$APP" -maxdepth 1 -type f -perm +111 | head -1)
+          if [ -z "$BIN" ]; then echo "::error::.app 里没有可执行文件"; ls -la "$APP"; exit 1; fi
           otool -l "$BIN" | awk '/minos|sdk /{print}' | head -4
           MINOS=$(otool -l "$BIN" | awk '/minos/{print $2; exit}')
           echo "main binary minos=$MINOS"

@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v7
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v8
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -133,7 +133,7 @@ jobs:
 
           otool -l "$PREFIX/lib/libmpv.a" | awk '/minos/{print "libmpv minos =",$2; exit}'
 
-          LIBS="-L\${libdir} -lmpv -lass -ldovi -lMoltenVK -lharfbuzz -lfreetype -lfribidi -lunibreak -lbluray -luchardet -luavs3d -lplacebo -lshaderc_combined -ldav1d -llcms2 -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv -framework Metal -framework MetalKit -framework QuartzCore -framework IOSurface -framework UIKit -framework CoreGraphics -framework Foundation"
+          LIBS="-L\${libdir} -lmpv -lass -ldovi -lMoltenVK -lharfbuzz -lfreetype -lfribidi -lunibreak -lbluray -luchardet -luavs3d -lplacebo -lshaderc_combined -ldav1d -llcms2 -lgnutls -lnettle -lhogweed -lgmp -lavformat -lavcodec -lavfilter -lavdevice -lswresample -lswscale -lavutil -lxml2 -lz -lbz2 -liconv"
           cat > "$PREFIX/lib/pkgconfig/mpv.pc" <<PC
           prefix=$PREFIX
           exec_prefix=\${prefix}
@@ -184,6 +184,7 @@ jobs:
             -DHAVE_H_ERRNO_ASSIGNABLE_EXITCODE=1 \
             -DUSE_LIBPSL=OFF \
             -DCURL_USE_LIBPSL=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,-framework,Metal -Wl,-framework,MetalKit -Wl,-framework,QuartzCore -Wl,-framework,IOSurface -Wl,-framework,UIKit -Wl,-framework,CoreGraphics -Wl,-framework,Foundation -Wl,-framework,CoreFoundation -Wl,-framework,CoreVideo -Wl,-framework,IOKit" \\
             -DCMAKE_IGNORE_PATH="/opt/homebrew/lib;/opt/homebrew/include;/opt/homebrew/Cellar;/usr/local/lib;/usr/local/include"
 
       - name: 编译

@@ -25,9 +25,9 @@ env:
   ASS_TAG: "0.17.5"
   BLURAY_TAG: "1.4.0"
   UCHARDET_TAG: "0.0.8"
-  UAVS3D_TAG: "1.0.0"      # 1.2.x 是 minos 15.0
+  UAVS3D_TAG: "1.2.1-fix"
   DOVI_TAG: "3.3.2"
-  MOLTENVK_TAG: "1.2.11"   # 1.4.x 是 minos 15.0，iOS 14 上 dyld 解析会崩
+  MOLTENVK_TAG: "1.4.2"
   APP_NAME: wiliwili
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v9
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v8
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -120,19 +120,9 @@ jobs:
           fetch MoltenVK.xcframework.zip moltenvk-build "$MOLTENVK_TAG"
 
           ls -la "$PREFIX/lib"
-          BAD=""
           for f in "$PREFIX/lib"/*.a; do
-            M=$(otool -l "$f" | awk '/minos/{print $2; exit}')
-            printf "  %-22s minos = %s\n" "$(basename "$f")" "$M"
-            case "$M" in
-              1[5-9].*|2[0-9].*) BAD="$BAD $(basename "$f")($M)" ;;
-            esac
+            otool -l "$f" | awk -v n="$(basename "$f")" '/minos/{print n, "minos =", $2; exit}'
           done
-          if [ -n "$BAD" ]; then
-            echo "::warning::以下库的 minos > 14.0，iOS 14 上有 dyld 风险:$BAD"
-          else
-            echo "::notice::所有静态库 minos 均 <= 14.0"
-          fi
           echo "===== 各静态库提供的 libplacebo 符号 ====="
           for f in "$PREFIX/lib"/*.a; do
             if nm -g "$f" 2>/dev/null | grep -q "_pl_vulkan_create"; then echo "libplacebo 在: $f"; fi
@@ -218,6 +208,17 @@ jobs:
             14.*) echo "::notice::部署目标 14.0 生效" ;;
             *) echo "::error::minos=$MINOS，不是 14.x"; exit 1 ;;
           esac
+
+          # ===== iOS 14 崩溃诊断：找出谁把 libc++ 新 ABI 符号带进来 =====
+          echo "===== 各静态库 minos / stream 类符号引用数 ====="
+          for f in .deps/mpv/lib/*.a; do
+            m=$(otool -l "$f" 2>/dev/null | awk '/minos/{print $2; exit}')
+            h=$(nm -u "$f" 2>/dev/null | c++filt 2>/dev/null | grep -cE "basic_filebuf|basic_ifstream|basic_ofstream|basic_fstream|basic_stringbuf")
+            printf "%-30s minos=%-8s stream_refs=%s\n" "$(basename "$f")" "$m" "$h"
+          done
+          echo "===== 主二进制里 undefined 的 std::__1 符号 ====="
+          nm -u "$BIN" 2>/dev/null | grep -E "_ZN?K?St3__1|_ZTVNSt3__1|_ZTTNSt3__1" | c++filt | sort -u | head -60
+
           P="$APP/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$P" >/dev/null 2>&1 \
             || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 14.0" "$P"
@@ -226,19 +227,52 @@ jobs:
                  /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" "$P"; }
           /usr/libexec/PlistBuddy -c "Print :UILaunchScreen" "$P" >/dev/null 2>&1 \
             || /usr/libexec/PlistBuddy -c "Add :UILaunchScreen dict" "$P"
-          /usr/libexec/PlistBuddy -c "Print :UIDeviceFamily" "$P" >/dev/null 2>&1 \
-            || { /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$P"; \
-                 /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$P"; }
+          /usr/libexec/PlistBuddy -c "Delete :UIDeviceFamily" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$P" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$P" >/dev/null 2>&1 \
             || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string wiliwili" "$P"
           /usr/libexec/PlistBuddy -c "Print :UIRequiredDeviceCapabilities" "$P" >/dev/null 2>&1 \
             || { /usr/libexec/PlistBuddy -c "Add :UIRequiredDeviceCapabilities array" "$P"; \
                  /usr/libexec/PlistBuddy -c "Add :UIRequiredDeviceCapabilities:0 string arm64" "$P"; }
+
+          # ===== 桌面图标：Assets.xcassets 未编译成 Assets.car，必须给标准命名的 png =====
+          I1024=$(find "$APP/Images.xcassets" -name "1024.png" | head -1)
+          echo "icon source: $I1024"
+          if [ -n "$I1024" ]; then
+            gen() { sips -z "$1" "$1" "$I1024" --out "$APP/$2" >/dev/null 2>&1 || echo "图标失败 $2"; }
+            gen 120 "AppIcon60x60@2x.png"
+            gen 180 "AppIcon60x60@3x.png"
+            gen 152 "AppIcon76x76@2x~ipad.png"
+            gen 167 "AppIcon83.5x83.5@2x~ipad.png"
+            gen 80  "AppIcon40x40@2x.png"
+            gen 120 "AppIcon40x40@3x.png"
+            gen 58  "AppIcon29x29@2x.png"
+            gen 87  "AppIcon29x29@3x.png"
+            ls -la "$APP"/AppIcon*.png
+          fi
+          set_icon_array() {
+            /usr/libexec/PlistBuddy -c "Delete :$1" "$P" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :$1 dict" "$P"
+            /usr/libexec/PlistBuddy -c "Add :$1:CFBundlePrimaryIcon dict" "$P"
+            /usr/libexec/PlistBuddy -c "Add :$1:CFBundlePrimaryIcon:CFBundleIconFiles array" "$P"
+            i=0
+            for n in $2; do
+              /usr/libexec/PlistBuddy -c "Add :$1:CFBundlePrimaryIcon:CFBundleIconFiles:$i string $n" "$P"
+              i=$((i+1))
+            done
+          }
+          set_icon_array CFBundleIcons "AppIcon60x60 AppIcon40x40 AppIcon29x29"
+          set_icon_array "CFBundleIcons~ipad" "AppIcon76x76 AppIcon83.5x83.5"
+
           echo "----- Info.plist -----"
           for k in CFBundleIdentifier CFBundleExecutable CFBundleDisplayName MinimumOSVersion UIDeviceFamily UIRequiredDeviceCapabilities; do
             printf "%-32s = " "$k"; /usr/libexec/PlistBuddy -c "Print :$k" "$P" 2>/dev/null || echo "(缺)"
           done
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons" "$P" || true
           plutil -lint "$P"
+
           rm -rf out && mkdir -p out/Payload
           cp -R "$APP" out/Payload/
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent out/Payload wiliwili-unsigned.ipa

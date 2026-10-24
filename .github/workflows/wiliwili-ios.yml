@@ -1,6 +1,6 @@
 name: iOS · wiliwili 构建（M2）
 
-# M2：用 MPVKit 0.41.0（minos 14.0，正好匹配 iOS 14 目标）编 wiliwili 主程序。
+# M2：用 MPVKit 0.41.0（iOS14 兼容性修复中）（minos 14.0，正好匹配 iOS 14 目标）编 wiliwili 主程序。
 # 这一步大概率第一次不会过，目的是把失败原因一条条逼出来。
 
 on:

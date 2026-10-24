@@ -25,9 +25,9 @@ env:
   ASS_TAG: "0.17.5"
   BLURAY_TAG: "1.4.0"
   UCHARDET_TAG: "0.0.8"
-  UAVS3D_TAG: "1.2.1-fix"
+  UAVS3D_TAG: "1.0.0"      # 1.2.x 是 minos 15.0
   DOVI_TAG: "3.3.2"
-  MOLTENVK_TAG: "1.4.2"
+  MOLTENVK_TAG: "1.2.11"   # 1.4.x 是 minos 15.0，iOS 14 上 dyld 解析会崩
   APP_NAME: wiliwili
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .deps/mpv
-          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v8
+          key: mpvkit-full-${{ env.MPVKIT_TAG }}-v9
 
       - name: 准备 MPVKit（mpv + ffmpeg 静态库 + pkg-config）
         run: |
@@ -120,9 +120,19 @@ jobs:
           fetch MoltenVK.xcframework.zip moltenvk-build "$MOLTENVK_TAG"
 
           ls -la "$PREFIX/lib"
+          BAD=""
           for f in "$PREFIX/lib"/*.a; do
-            otool -l "$f" | awk -v n="$(basename "$f")" '/minos/{print n, "minos =", $2; exit}'
+            M=$(otool -l "$f" | awk '/minos/{print $2; exit}')
+            printf "  %-22s minos = %s\n" "$(basename "$f")" "$M"
+            case "$M" in
+              1[5-9].*|2[0-9].*) BAD="$BAD $(basename "$f")($M)" ;;
+            esac
           done
+          if [ -n "$BAD" ]; then
+            echo "::warning::以下库的 minos > 14.0，iOS 14 上有 dyld 风险:$BAD"
+          else
+            echo "::notice::所有静态库 minos 均 <= 14.0"
+          fi
           echo "===== 各静态库提供的 libplacebo 符号 ====="
           for f in "$PREFIX/lib"/*.a; do
             if nm -g "$f" 2>/dev/null | grep -q "_pl_vulkan_create"; then echo "libplacebo 在: $f"; fi
